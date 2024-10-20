@@ -4,10 +4,11 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Upload, Play, Download, RefreshCw } from "lucide-react"
-import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg'
+import { Upload, Download, RefreshCw } from "lucide-react"
+import { FFmpeg } from '@ffmpeg/ffmpeg'
+import { fetchFile } from '@ffmpeg/util'
 
-const ffmpeg = createFFmpeg({ log: true })
+const ffmpeg = new FFmpeg()
 
 export default function Home() {
   const [images, setImages] = useState<File[]>([])
@@ -36,15 +37,15 @@ export default function Home() {
       // Write images to FFmpeg virtual file system
       for (let i = 0; i < images.length; i++) {
         const imageName = `image${i}.jpg`
-        ffmpeg.FS('writeFile', imageName, await fetchFile(images[i]))
+        ffmpeg.writeFile(imageName, await fetchFile(images[i]))
       }
 
       // Create a text file for the title and subtitle
-      ffmpeg.FS('writeFile', 'title.txt', 'ENSAIO GESTANTE')
-      ffmpeg.FS('writeFile', 'subtitle.txt', 'ETERNIZE ESSE MOMENTO ESPECIAL')
+      ffmpeg.writeFile('title.txt', 'ENSAIO GESTANTE')
+      ffmpeg.writeFile('subtitle.txt', 'ETERNIZE ESSE MOMENTO ESPECIAL')
 
       // Create video from images with effects
-      await ffmpeg.run(
+      await ffmpeg.exec([
         '-framerate', '1/3',
         '-i', 'image%d.jpg',
         '-vf', `
@@ -56,10 +57,10 @@ export default function Home() {
         '-c:v', 'libx264',
         '-pix_fmt', 'yuv420p',
         'output.mp4'
-      )
+      ])
 
       // Read the resulting video
-      const data = ffmpeg.FS('readFile', 'output.mp4')
+      const data = await ffmpeg.readFile('output.mp4')
 
       // Create a URL for the video
       const videoBlob = new Blob([data.buffer], { type: 'video/mp4' })
