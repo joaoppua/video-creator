@@ -1,101 +1,147 @@
-import Image from "next/image";
+"use client"
+
+import React, { useState, useRef, useEffect } from 'react'
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Upload, Play, Download, RefreshCw } from "lucide-react"
+import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg'
+
+const ffmpeg = createFFmpeg({ log: true })
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [images, setImages] = useState<File[]>([])
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+  useEffect(() => {
+    ffmpeg.load()
+  }, [])
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setImages(Array.from(e.target.files))
+    }
+  }
+
+  const handleCreateVideo = async () => {
+    setIsLoading(true)
+    setProgress(0)
+
+    try {
+      await ffmpeg.load()
+
+      // Write images to FFmpeg virtual file system
+      for (let i = 0; i < images.length; i++) {
+        const imageName = `image${i}.jpg`
+        ffmpeg.FS('writeFile', imageName, await fetchFile(images[i]))
+      }
+
+      // Create a text file for the title and subtitle
+      ffmpeg.FS('writeFile', 'title.txt', 'ENSAIO GESTANTE')
+      ffmpeg.FS('writeFile', 'subtitle.txt', 'ETERNIZE ESSE MOMENTO ESPECIAL')
+
+      // Create video from images with effects
+      await ffmpeg.run(
+        '-framerate', '1/3',
+        '-i', 'image%d.jpg',
+        '-vf', `
+          zoompan=z='if(lte(zoom,1.0),1.5,max(1.001,zoom-0.0015))':d=125,
+          drawtext=fontfile=/font.ttf:fontsize=30:fontcolor=white:x=(w-tw)/2:y=(h-th)/2:textfile=title.txt:enable='between(t,0,3)',
+          drawtext=fontfile=/font.ttf:fontsize=20:fontcolor=white:x=(w-tw)/2:y=h-th-20:textfile=subtitle.txt:enable='between(t,0,3)',
+          fade=t=in:st=0:d=1,fade=t=out:st=2:d=1
+        `,
+        '-c:v', 'libx264',
+        '-pix_fmt', 'yuv420p',
+        'output.mp4'
+      )
+
+      // Read the resulting video
+      const data = ffmpeg.FS('readFile', 'output.mp4')
+
+      // Create a URL for the video
+      const videoBlob = new Blob([data.buffer], { type: 'video/mp4' })
+      const videoUrl = URL.createObjectURL(videoBlob)
+      setVideoUrl(videoUrl)
+    } catch (error) {
+      console.error('Error creating video:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleDownload = () => {
+    if (videoUrl) {
+      const a = document.createElement('a')
+      a.href = videoUrl
+      a.download = 'ensaio_gestante.mp4'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    }
+  }
+
+  const handleReset = () => {
+    setImages([])
+    setVideoUrl(null)
+    setProgress(0)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  return (
+    <div className="container mx-auto p-4 max-w-md">
+      <h1 className="text-2xl font-bold mb-4">Criador de Vídeo de Imagens</h1>
+      {!videoUrl ? (
+        <>
+          <div className="mb-4">
+            <Label htmlFor="image-upload">Carregar Imagens</Label>
+            <Input
+              id="image-upload"
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileChange}
+              ref={fileInputRef}
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          </div>
+          <p className="mb-2">Imagens selecionadas: {images.length}</p>
+          <Button
+            onClick={handleCreateVideo}
+            disabled={images.length === 0 || isLoading}
+            className="w-full mb-2"
           >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+            {isLoading ? (
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="mr-2 h-4 w-4" />
+            )}
+            {isLoading ? 'Criando vídeo...' : 'Criar Vídeo'}
+          </Button>
+          {isLoading && (
+            <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 mb-4">
+              <div className="bg-blue-600 h-2.5 rounded-full" style={{width: `${progress}%`}}></div>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <video className="w-full mb-4" controls src={videoUrl}>
+            Seu navegador não suporta o elemento de vídeo.
+          </video>
+          <Button onClick={handleDownload} className="w-full mb-2">
+            <Download className="mr-2 h-4 w-4" />
+            Download do Vídeo
+          </Button>
+          <Button onClick={handleReset} variant="outline" className="w-full">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Reiniciar
+          </Button>
+        </>
+      )}
     </div>
-  );
+  )
 }
